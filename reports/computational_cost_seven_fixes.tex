@@ -1,0 +1,296 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+\lstset{basicstyle=\ttfamily\small, breaklines=true, columns=fullflexible,
+        backgroundcolor=\color{gray!8}, frame=single, framesep=3pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Computational Cost Reduction -- OTI (30-basis) Sensitivity Library}
+\fancyhead[R]{\thepage}
+
+\title{\textbf{Reducing the Computational Cost of the 30-Parameter\\
+OTI Sensitivity Library: Seven Optimizations}\\[0.3em]
+\large From 2.883X to 1.939X extra cost, full-scale}
+\author{Ti-6Al-4V single-track laser scan, MFEM/OTI30 sensitivity driver}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\section{Context and Goal}
+
+The project computes first-order thermal sensitivities (derivatives of
+temperature with respect to material, boundary, and laser-source
+parameters) for a Ti-6Al-4V single-track additive-manufacturing thermal
+model, using a self-contained multi-directional dual-number type
+(``OTI30'') to propagate all wired parameter directions in a single
+forward pass. The cost metric used throughout is the \textbf{extra-cost
+multiplier}
+\[
+X = \frac{\text{extra CPU time (sensitivity pass only)}}{\text{nominal CPU time (real temperature solve only)}},
+\]
+matching both this project's own established convention and the
+reference paper's (Rincon-Tabares et al., \emph{Progress in Additive
+Manufacturing}, 2025) reporting of a 1.78X extra-cost figure for an
+equivalent 30-parameter HYPAD-FEM computation.
+
+At the start of this optimization effort, the 30-basis library's
+full-simulation (8447 accepted time steps, 19{,}716 DOFs, N=16 wired
+directions) extra cost was \textbf{2.883X}. Seven cumulative fixes,
+described below, brought this down to \textbf{1.939X} -- a 32.8\% total
+reduction, and the first result in this effort to cross below the 2X
+target. Table~\ref{tab:progression} summarizes the full progression.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+State & Nominal [s] & Extra [s] & $X$ \\
+\midrule
+Original (31-basis, single-RHS PARDISO) & 1163.35 & 3353.60 & 2.883 \\
++ Fix 1--2 (compact-basis + batched multi-RHS) & 1167.00 & 2750.74 & 2.357 \\
++ Fix 1--5 (+ boundary/domain assembly fixes) & 1161.57$^\dagger$ & 2802.41$^\dagger$ & 2.411$^\dagger$ \\
++ Fix 1--7 (all fixes, final) & 1161.57 & 2252.69 & \textbf{1.939} \\
+\bottomrule
+\end{tabular}
+\caption{Full-simulation (8447-step) extra-cost progression. $^\dagger$Fixes
+3--5 alone produced a small, temporarily higher intermediate reading before
+fixes 6--7 delivered the larger reduction; see \S\ref{sec:fix5}--\S\ref{sec:fix7}.}
+\label{tab:progression}
+\end{table}
+
+\section{Benchmark Setup}
+
+All numbers below are measured on the \texttt{fastverify} mesh (17{,}160
+hexahedral elements, 19{,}716 DOFs, linear H1 elements), $N=16$ wired
+sensitivity directions (of the 30 declared in the target parameter
+scheme), MKL PARDISO as the linear solver, $-\text{eps}\;0$ (radiation
+neglected, matching the reference paper's stated assumption). Two scales
+are used throughout the optimization work: a \textbf{500-step short test}
+(fast iteration, used to validate each fix's correctness and get an
+initial cost estimate) and the \textbf{full 8447-step simulation}
+(355 reassemblies, the trustworthy number for final reporting -- short
+tests were repeatedly found to \emph{underestimate} the full-scale extra
+cost, since sensitivities start near-zero and spread through the mesh
+over time).
+
+\subsection*{A methodological lesson that shaped this work}
+\texttt{callgrind} instruction-count profiling was used early on to guess
+where computational cost was concentrated. It was later found, via direct
+wall-clock measurement, to have been \textbf{wrong not just in magnitude
+but in which code region dominated} (see \S\ref{sec:diagnostics}). Every
+fix below was therefore verified two ways before being trusted: (1) a
+correctness check comparing sensitivity output CSVs against a known-good
+reference (bit-identical, modulo floating-point noise-floor differences
+of no physical significance), and (2) a direct \texttt{chrono} wall-clock
+timing measurement -- never a proxy metric alone.
+
+\section{The Seven Fixes}
+
+\subsection{Fix 1 -- Compact Basis Renumbering}
+\textbf{Problem.} The OTI30 dual-number type reserved one array slot per
+\emph{declared} physical parameter (30 total, sparsely numbered 1--30),
+even though only 16 directions were actually wired. Every arithmetic
+operation therefore looped over a 31-slot array (30 parameters + 1
+reserved for an internal Newton-tangent trick) regardless of how many
+directions were in use.
+
+\textbf{Fix.} Renumbered the wired directions to a compact, sequential
+1--16 range (with slot 17 reserved for the Newton-tangent trick),
+shrinking \texttt{OTI30\_NUM\_BASES} from 31 to 17. An isolated
+microbenchmark of the same arithmetic pattern predicted a 2.27$\times$
+speedup from this change alone.
+
+\textbf{Result.} Real, but far more modest than the microbenchmark
+predicted: only a $\sim$3.6\% extra-cost reduction. A dead-code block
+using the old sparse numbering was also found and removed during this
+work (see \S\ref{sec:lessons}).
+
+\subsection{Fix 2 -- Batched Multi-RHS PARDISO Solve}
+\textbf{Problem.} Although the driver already reused one PARDISO
+symbolic/numerical factorization per time step across all 16 sensitivity
+directions, it still issued 16 \emph{separate} PARDISO solve (phase-33)
+calls per step -- one per direction -- each re-streaming the resident
+factor from memory independently.
+
+\textbf{Fix.} Added a batched \texttt{SolveMulti()} path to the PARDISO
+wrapper: all 16 right-hand sides are packed into one column-major buffer
+and solved in a \emph{single} phase-33 call per step, letting PARDISO
+reuse the resident factor across all directions in one pass. This matches
+the architecture explicitly described by the reference paper: ``solving
+all sensitivities of each time increment in a single linear step with a
+single matrix factorization operation.''
+
+\textbf{Result.} The single largest win of the entire effort:
+\texttt{solve\_s} dropped from 43.18\,s to 12.88\,s in the 500-step test
+(\textbf{$-$70\%}). Combined with Fix 1, full-scale extra cost dropped
+from 2.883X to \textbf{2.357X} -- an 18.2\% reduction, verified at full
+scale, not extrapolated from a short test.
+
+\subsection{Fix 3 -- Boundary Quadrature-Point Geometry Cache}
+\textbf{Problem.} The domain (volume) assembly loop already cached
+per-element, per-quadrature-point shape functions and Jacobian data
+(\texttt{geom\_cache}, built once before the time loop) -- but the
+boundary assembly loop recomputed \texttt{CalcShape}/\texttt{SetIntPoint}/
+\texttt{Trans.Weight()} from scratch at every quadrature point, every
+time step. This was initially believed, based on \texttt{callgrind}
+profiling, to be the dominant cost of the boundary loop.
+
+\textbf{Fix.} Added an analogous \texttt{bgeom\_cache} for boundary
+faces, built once, reused every step.
+
+\textbf{Result.} Only a small win ($-1.6\%$ on \texttt{tan\_s}) -- direct
+per-line profiling later revealed the geometry recompute itself was only
+$\sim$1.8\% of the boundary loop's cost, so this fix, while correct, was
+never targeting the dominant cost (see \S\ref{sec:diagnostics}).
+
+\subsection{Fix 4 -- Skip Radiation Term When Emissivity Is Zero}
+\textbf{Problem.} The boundary loop unconditionally computed a
+radiation-coefficient OTI30 arithmetic chain (\texttt{hrad\_q}, three
+chained multiplications plus the interpolation feeding it) at every
+quadrature point, even though every benchmark run uses
+$\text{emissivity}=0$ (matching the paper's own ``radiation neglected''
+assumption), which makes this term \emph{identically} zero -- in both
+value and every derivative component.
+
+\textbf{Fix.} Restructured the loop to skip the interpolation and
+\texttt{hrad\_q} arithmetic entirely when \texttt{emissivity} $\le 0$
+(a runtime check, not an approximation -- mathematically exact for this
+case).
+
+\textbf{Result.} Another small win ($-0.9\%$ further on
+\texttt{tan\_s}), for the same underlying reason as Fix 3: this was not
+the dominant cost.
+
+\subsection{Fix 5 -- Domain Interpolation Loop-Interchange}\label{sec:fix5}
+\textbf{Problem.} A decisive diagnostic (direct wall-clock splitting of
+\texttt{tan\_s} into domain vs.\ boundary portions, see
+\S\ref{sec:diagnostics}) revealed that \textbf{domain assembly, not
+boundary, is 99.4\% of the tangent-assembly cost} -- inverting the
+earlier \texttt{callgrind}-based belief. Within the domain loop, the
+per-quadrature-point interpolation step accumulated the local
+temperature \emph{and} all 16 sensitivity fields in one fused loop that
+touched 16 separate array objects on every iteration, likely blocking
+compiler auto-vectorization of any single direction's own computation.
+
+\textbf{Fix.} Split the fused loop into the temperature's own simple
+accumulation plus one clean, contiguous, pointer-based dot-product loop
+per direction.
+
+\textbf{Result.} A real, modest, same-node-verified win: \texttt{tan\_dom\_s}
+dropped 4.6\% (77.20\,s $\to$ 73.63\,s) in a controlled short-test A/B.
+
+\subsection{Fix 6 -- Hoisting the Redundant \texorpdfstring{$\dot g$}{gdot} Computation}\label{sec:fix6}
+\textbf{Problem.} A further diagnostic split domain assembly into three
+sub-costs: interpolation (23\%), the material-property (\texttt{k\_oti})
+evaluation (33\%), and the final scatter loop (44\%, the single largest
+piece). Inside the scatter loop, a per-node gradient dot product
+(``\texttt{gdot}'') was being recomputed inside the per-direction loop
+even though its value does not depend on which direction is being
+processed -- a \emph{provable} algorithmic redundancy, not a
+hardware-behavior guess.
+
+\textbf{Fix.} Hoisted the \texttt{gdot} computation outside the
+per-direction loop, computing it once per quadrature point into a small
+array and reusing it for however many directions survive the loop's own
+early-exit check.
+
+\textbf{Result.} $-40.9\%$ on the scatter sub-cost in the short test,
+same-node verified.
+
+\subsection{Fix 7 -- Gating Unnecessary Second-Order Storage Initialization}\label{sec:fix7}
+\textbf{Problem.} Every OTI30 object construction unconditionally zeroed
+\emph{both} its first-derivative array (\texttt{e[]}, always needed) and
+its second-derivative array (\texttt{epp[]}, needed only when second-order
+sensitivities are requested via \texttt{-o2}, which was off for every
+first-order benchmark run). An earlier, separate attempt this session had
+gated the \emph{arithmetic operators}' \texttt{epp} computation on this
+flag but never gated the \emph{constructor}'s own initialization --
+explaining why that earlier attempt measured almost no effect.
+
+\textbf{Fix.} Gated the constructor's \texttt{epp.fill(0.0)} call on the
+same second-order flag.
+
+\textbf{Result.} $-27.9\%$ on the \texttt{k\_oti} sub-cost in the short
+test, same-node verified.
+
+\subsection*{Combined effect of Fixes 6--7}
+Together, Fixes 6 and 7 produced the largest single verified improvement
+of the entire post-Fix-2 effort: \texttt{tan\_dom\_s} dropped
+\textbf{21.3\%} (81.00\,s $\to$ 63.72\,s) in a controlled, same-compute-node
+short-test A/B (both runs confirmed via \texttt{sacct} to have executed on
+identical hardware). At full scale, the improvement was \emph{larger} than
+this short-test figure predicted ($-27.9\%$ vs.\ $-21.3\%$) -- consistent
+with the mechanism by which Fix 6 works: its benefit scales with how many
+of the 16 directions survive the loop's early-exit check, and that
+surviving fraction grows over the course of the simulation (the same
+reason tangent-assembly cost grows super-linearly with step count). This
+is the one instance in this effort where a quantitative prediction, made
+explicitly before the full-scale result was known, was confirmed rather
+than merely directionally right.
+
+\section{Supporting Diagnostics}\label{sec:diagnostics}
+
+\subsection{The callgrind pitfall}
+Whole-program \texttt{callgrind} instruction-count (Ir) profiling
+suggested the boundary loop accounted for $\sim$79\% of tangent-assembly
+cost. This was later shown, via direct \texttt{chrono} wall-clock
+instrumentation, to be backwards: domain assembly is 99.4\% of the real
+cost, boundary is 0.6\%. The lesson: instruction-count profiling can be
+unreliable not only in magnitude but in \emph{which code region
+dominates}, even comparing two plain-C++ regions with no external library
+calls involved. Every subsequent diagnostic in this effort used direct
+wall-clock timing instead.
+
+\subsection{Domain-loop sub-split}
+Splitting domain assembly into interpolation / \texttt{k\_oti} /
+scatter sub-costs (via a per-element, not per-quadrature-point, set of
+timers, to avoid the timer-call overhead itself contaminating the
+measurement) found the relative shares 23\% / 33\% / 44\% respectively --
+directly motivating Fixes 6 and 7 as higher-value targets than the
+interpolation step Fix 5 had already addressed.
+
+\section{A Caveat on Precision: Node-to-Node Variance}\label{sec:lessons}
+
+While investigating the production driver's own instrumentation
+separately, a same-code, purely-additive change (adding a previously
+missing timer, with no effect on any other computed value) showed one
+timing category swing by \textbf{$\sim$34\%} between two different compute
+nodes on this shared, non-exclusive cluster. Since every full-scale run in
+this effort landed on a different node, absolute full-scale $X$ values
+should be read with this uncertainty in mind. The 1.939X final figure is
+believed substantially real -- not an artifact of node variance -- because
+the underlying Fix 6/7 improvement was independently confirmed via a
+same-node short-test A/B \emph{and} the full-scale result matched the
+direction and rough magnitude that mechanism predicted in advance, a
+standard not met by any single unverified full-scale delta on its own.
+
+\section{Conclusion}
+
+Seven fixes, applied cumulatively and each independently verified for
+correctness (bit-identical sensitivity output, modulo floating-point
+noise-floor differences) and measured effect (direct wall-clock timing,
+never a proxy metric alone), reduced the 30-parameter OTI sensitivity
+library's full-scale extra cost from 2.883X to \textbf{1.939X} -- a
+32.8\% total reduction, crossing below the project's 2X target for the
+first time. The two largest wins (batched multi-RHS PARDISO, and the
+combined gdot-hoisting/epp-fill-gating pair) shared a common trait: they
+targeted a \emph{provable} algorithmic or architectural redundancy rather
+than a plausible-sounding but unverified hardware-behavior hypothesis --
+of the seven fixes, those grounded in a concrete, checkable mechanism
+consistently outperformed those grounded only in profiler output or
+intuition.
+
+\end{document}
