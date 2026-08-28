@@ -180,7 +180,7 @@ cd reports && pdflatex computational_cost_seven_fixes.tex
 
 ## Author
 
-Diego F. Morales-Bernal — AMMS Lab, University of Texas at San Antonio.
+Daniel F. Morales-Bernal — AMMS Lab, University of Texas at San Antonio.
 
 ## License
 
