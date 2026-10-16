@@ -11,17 +11,20 @@ __pycache__/
 
 # Solver executables produced in source/build directories
 /src/fbke_enzyme
-/src/fbke_enzyme_viz
-/src/fbko_*
-/src_dump/fbke_enzyme
-/src_dump/fbke_enzyme_viz
-/src_dump/fbko_*
 /opt/src/fbke_enzyme
 /opt/src/fbko_*
 /residual_stress/src/fbke_enzyme
 /residual_stress/mech/src/rs_mech
 /residual_stress/mech/src/test_kernel
 /residual_stress/mech/src/test_second
+/opt/src/obj/
+/residual_stress/src/obj/
+
+# HPC test suite (tests/): run output, SLURM logs, unit-test binaries
+/tests/out/
+/tests/logs/
+/tests/unit/test_fb_kernels
+/tests/unit/test_fb_kernels_mock
 
 # Checkpoints and transient HPC output
 *.ckpt
