@@ -1,0 +1,7 @@
+run                           steps  sum step wall [s]   s/step  driver Wall time [s]  threads  load
+Enzyme nominal                 4400            16913.1     3.84               16919.5        4  3 stages share a 40-core node (4/12/24 cores)
+Enzyme first order             4400            19451.2     4.42               19459.1       12  3 stages share a 40-core node
+Enzyme full Hessian            2676            35643.9    13.32                   nan       40  node shared with nothing else after the relaunch; 40 threads
+OTI nominal (reference)        4400             5463.6     1.24                5469.2       16  exclusive node
+OTI first order (1 pass)       2562            20385.4     7.96                   nan       40  exclusive node, 40 threads
+OTI 2nd order blend-fixed      2864            96830.9    33.81                   nan       40  exclusive node, 40 threads

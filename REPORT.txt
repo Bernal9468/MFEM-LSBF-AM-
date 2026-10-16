@@ -1,0 +1,28 @@
+nominal: 4400 steps, T_max = 3417.7 K
+  vs OTI reference nominal: probe NRMSE 0.000e+00 %, T_max NRMSE 0.000e+00 %, peak 3417.70 K (ref) vs 3417.70 K
+first order: 4400 steps
+  vs OTI reference first order (4400 common steps):
+    dT_dTw_row1            NRMSE  1.537e+15 %
+    dT_dRy_row1            NRMSE  1.180e+02 %
+    dT_dhp_row1            NRMSE  8.551e+01 %
+    dT_dhc_row1            NRMSE  1.620e+01 %
+    dT_dkp_row1            NRMSE  1.497e+01 %
+    dT_drho_row1           NRMSE  1.029e+01 %
+    dT_dRhop_row1          NRMSE  6.110e+00 %
+    dT_dk_row1             NRMSE  5.043e+00 %
+    dT_dRz_row1            NRMSE  3.042e+00 %
+    dT_dLfus_row1          NRMSE  2.650e+00 %
+    dT_dT0_row1            NRMSE  2.372e+00 %
+    dT_dTliq_row1          NRMSE  2.129e+00 %
+    dT_dP_row1             NRMSE  1.425e+00 %
+    dT_dEta_row1           NRMSE  1.425e+00 %
+    dT_dcp_row1            NRMSE  9.922e-01 %
+    dT_dX0_row1            NRMSE  7.096e-01 %
+    dT_dTL_row1            NRMSE  7.095e-01 %
+    dT_dVx_row1            NRMSE  6.275e-01 %
+    dT_dRx_row1            NRMSE  5.079e-01 %
+    dT_dTs_row1            NRMSE  3.098e-01 %
+second order (full Hessian): 4400 steps, 210 entries (20 pure + 190 mixed)
+  pure d2T/dk2 in hess.csv vs sens.csv: NRMSE 0.00e+00 %
+  pure d2T/dcp2 in hess.csv vs sens.csv: NRMSE 0.00e+00 %
+  pure d2T/dP2 in hess.csv vs sens.csv: NRMSE 0.00e+00 %

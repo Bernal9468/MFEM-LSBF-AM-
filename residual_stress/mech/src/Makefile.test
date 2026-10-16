@@ -1,0 +1,8 @@
+MFEM_DIR = /work/gyj329/MFEM/implementations/bridge_4layer_kokkos/My_kokkos/mfem_openmp/src
+ENZYME_ROOT = /work/gyj329/MFEM/implementations/bridge_case_enzyme/third_party/enzyme_build
+ENZYME_PLUGIN = $(firstword $(wildcard $(ENZYME_ROOT)/Enzyme/ClangEnzyme-*.so))
+CLANG = /usr/lib64/llvm21/bin/clang++
+test_kernel: rs_kernels.cpp test_kernel.cpp rs_kernel.hpp rs_kernels.h
+	$(CLANG) -O2 -std=c++17 -fPIC -fno-exceptions -fplugin=$(ENZYME_PLUGIN) -DMFEM_USE_ENZYME -I$(MFEM_DIR) rs_kernels.cpp test_kernel.cpp -o $@
+test_second: rs_kernels.cpp test_second.cpp rs_kernel.hpp rs_kernels.h
+	$(CLANG) -O2 -std=c++17 -fPIC -fno-exceptions -fplugin=$(ENZYME_PLUGIN) -DMFEM_USE_ENZYME -I$(MFEM_DIR) rs_kernels.cpp test_second.cpp -o $@

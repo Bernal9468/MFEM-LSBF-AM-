@@ -1,0 +1,48 @@
+
+FIRST ORDER  Enzyme vs OTI reference  (4400 common steps)
+param     NRMSE [%]  verdict  note
+k         4.754e-05  PASS     
+cp        4.879e-05  PASS     
+rho       1.116e-04  PASS     
+Lfus      2.996e-04  PASS     
+Ts        7.234e-05  PASS     
+Tliq      8.448e-05  PASS     
+hc        4.342e-05  PASS     
+T0        6.369e-03  PASS     
+P         6.267e-05  PASS     
+Eta       6.267e-05  PASS     
+Rx        6.454e-03  PASS     
+Ry        1.033e+02  FAIL     |value| ~1e-10, below solver noise
+Rz        1.056e-04  PASS     
+X0        1.779e-02  PASS     
+Vx        1.926e-02  PASS     
+TL        1.780e-02  PASS     
+Tw        3.441e-01  PASS     
+hp        3.259e-04  PASS     
+kp        6.761e-05  PASS     
+Rhop      7.270e-05  PASS     
+-> 19/20 within 1 %
+
+SECOND ORDER (pure terms)  Enzyme vs OTI with powder blend fixed  (4400 common steps)
+param     NRMSE [%]  verdict  note
+k         1.714e-04  PASS     
+cp        1.283e-04  PASS     
+rho       3.768e-04  PASS     
+Lfus      8.084e-04  PASS     
+Ts        6.517e-05  PASS     
+Tliq      5.887e-05  PASS     
+hc        1.652e-04  PASS     
+T0        5.897e-03  PASS     
+P         1.625e-04  PASS     
+Eta       1.625e-04  PASS     
+Rx        1.000e+02  FAIL     
+Ry        1.000e+02  FAIL     |value| ~1e-10, below solver noise
+Rz        1.338e-04  PASS     
+X0        3.020e-02  PASS     
+Vx        2.418e-02  PASS     
+TL        3.021e-02  PASS     
+Tw        1.201e-01  PASS     
+hp        4.558e-04  PASS     
+kp        3.397e-04  PASS     
+Rhop      1.253e-04  PASS     
+-> 18/20 within 1 %

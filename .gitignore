@@ -1,0 +1,56 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+
+# Compiler and linker products
+*.o
+*.a
+*.so
+*.dylib
+
+# Solver executables produced in source/build directories
+/src/fbke_enzyme
+/src/fbke_enzyme_viz
+/src/fbko_*
+/src_dump/fbke_enzyme
+/src_dump/fbke_enzyme_viz
+/src_dump/fbko_*
+/opt/src/fbke_enzyme
+/opt/src/fbko_*
+/residual_stress/src/fbke_enzyme
+/residual_stress/mech/src/rs_mech
+/residual_stress/mech/src/test_kernel
+/residual_stress/mech/src/test_second
+
+# Checkpoints and transient HPC output
+*.ckpt
+ckpt.bin
+slurm-*.out
+*.out
+*.log
+*.time
+*.err
+core.*
+
+# Editor and manual backup copies
+*~
+*.bak
+*.bak[0-9]*
+*.bak_*
+*.orig
+*.orig_*
+*.before_*
+*.v1_*
+
+# Generated result trees: retain portable CSV tables, exclude bulky runtime
+# binaries, checkpoints, logs, and other transient files.
+/results/**
+!/results/**/
+!/results/**/*.csv
+/opt/results/**
+!/opt/results/**/
+!/opt/results/**/*.csv
+/residual_stress/results/**
+!/residual_stress/results/**/
+!/residual_stress/results/**/*.csv
